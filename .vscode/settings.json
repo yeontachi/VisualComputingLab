@@ -1,0 +1,22 @@
+{
+  "files.associations": {
+    "*.hpp": "cpp",
+    "*.tpp": "cpp"
+  },
+  "C_Cpp.default.compilerPath": "/usr/bin/g++",
+  "C_Cpp.default.cppStandard": "c++17",
+  "C_Cpp.default.intelliSenseMode": "linux-gcc-x64",
+  "C_Cpp.default.includePath": [
+    "${workspaceFolder}/include",
+    "/usr/include/opencv4",
+    "/usr/include/eigen3",
+    "/usr/include/gstreamer-1.0",
+    "/usr/include/glib-2.0",
+    "/usr/lib/x86_64-linux-gnu/glib-2.0/include",
+    "/usr/include/libv4l2",
+    "/usr/include/freetype2",
+    "/usr/include/harfbuzz"
+  ],
+  "terminal.integrated.defaultProfile.linux": "bash",
+  "editor.formatOnSave": true
+}
