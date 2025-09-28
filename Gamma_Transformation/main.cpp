@@ -48,7 +48,7 @@ int main(void)
     {
         for (int w = 0; w < img.cols; ++w)
         {
-            pData[h * img.rows + w] = gamma_transformation(img, h, w, gamma);
+            pData[h * img.cols + w] = gamma_transformation(img, h, w, gamma);
         }
     }
 
