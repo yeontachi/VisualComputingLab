@@ -11,6 +11,8 @@
 원본 Lena 영상은 256단계의 GrayScale 영상이다. 그러나 이를 단순히 흑(0)과 백(255) 두 가지 값으로만 표현한다면 대부분의 중간 단계가 사라지고,
 부드러운 톤의 변화는 계단처럼 뚝뚝 끊겨 보인다. 
 
+![alt text](/Image_Processing/Dithering/Images/BinarizedLena.png)
+
 이 문제를 해결하기 위해 사용되는 기법이 바로 **디더링(Dithering)**이다. 디더링은 픽셀을 흑과 백으로만 찍되, 그 분포와 배치를 조절하여 사람 눈에는
 중간 톤이 있는 것처럼 보이도록 하는 방법이다.
 
@@ -50,7 +52,7 @@
 
 사람 눈에는 회색이 부드럽게 보이지만, 확대해보면 불규칙하게 흩뿌려진 점들로 구성되어 있다.
 
-![alt text](image-2.png)
+![alt text](/Image_Processing/Dithering/Images/ErrorDifusionPixel.png)
 
 ## Error Diffusion Dithering
 Error Diffusion Dithering에 대해 좀 더 자세히 알아보자.
@@ -67,7 +69,7 @@ Error Diffusion은 말 그대로 Error를 확산하는 것이다.
 이 오차를 아직 처리하지 않은 이웃 픽셀들에 **가중치**를 곱해 더해 둔다. 다음 픽셀을 처리할 때는 "원래 값 + 누적 오차"로 판단하니,
 지역적으로 어긋나도 **전체적으로 평균 밝기가 유지**되도록 (편향이 0에 가깝도록) 만든다.
 
-![alt text](image-3.png)
+![alt text](/Image_Processing/Dithering/Images/Floyd.png)
 
 여기서 중요한 점은 **가중치 합이 1**이여야 한다는 점이다. 그 이유는,
  오차 $e$를 $\sum w_i = 1$로 분배하면 **DC(평균) 보존**이 이론적으로 성립한다.
@@ -94,4 +96,4 @@ Error Diffusion은 말 그대로 Error를 확산하는 것이다.
 
 
 ### Compare(Original, Random, Ordered, Error Diffusion)
-![alt text](image.png)
+![alt text](/Image_Processing/Dithering/Images/Compare.png)
