@@ -77,7 +77,7 @@ Mat Gaussian_Filter(const Mat &src)
     outData = (unsigned char *)output.data;
 
     double kernel[9];
-    createGaussian3x3_CenterFirst(0.3, kernel);
+    createGaussian3x3_CenterFirst(3.0, kernel);
 
     for (int h = 1; h < PaddedSrc.rows - 1; ++h)
     {
@@ -114,7 +114,7 @@ int main(void)
     Mat dstImg = Gaussian_Filter(src); // Average Filter 적용
 
     imshow("Original", src);
-    imshow("Gaussian Filter, sigma = 0.3", dstImg);
+    imshow("Gaussian Filter", dstImg);
 
     waitKey(0);
 
