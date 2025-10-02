@@ -19,7 +19,7 @@ Mat zeroPadding(const Mat &src)
     {
         for (int w = 0; w < src.cols; ++w)
         {
-            paddedMat.at<uchar>(h + 1, w + 1) = src.at<uchar>(h, w); // at 접근법
+            paddedMat.at<uchar>(h + 1, w + 1) = src.at<uchar>(h, w);
         }
     }
 
