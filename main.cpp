@@ -1,100 +1,85 @@
 #include <opencv2/opencv.hpp>
 #include <iostream>
+#include <vector>
+#include <cmath>
 
 using namespace std;
 using namespace cv;
 
-int wx[8] = {-1, 0, 1, 1, 1, 0, -1, -1}; // 좌상단부터 시게방향
-int wy[8] = {-1, -1, -1, 0, 1, 1, 1, 0};
-
-// 3x3 Gaussian kernel -> 배열 (0=center, 1~8 시계방향)
-void createGaussian3x3_CenterFirst(double sigma, double outKernel[9])
+// 가우시안 커널 생성 (ksize x ksize, 홀수 크기)
+vector<double> createGaussianKernel(int ksize, double sigma)
 {
-    int ksize = 3;
+    if (ksize % 2 == 0 || ksize <= 0)
+        throw runtime_error("ksize must be odd and > 0");
+
     int half = ksize / 2;
-    double mat[3][3];
+    vector<double> kernel(ksize * ksize);
     double sum = 0.0;
 
-    // 먼저 3x3 Gaussian 값 계산
+    // 가우시안 값 계산
     for (int i = -half; i <= half; i++)
     {
         for (int j = -half; j <= half; j++)
         {
             double value = exp(-(i * i + j * j) / (2 * sigma * sigma));
-            mat[i + half][j + half] = value;
+            kernel[(i + half) * ksize + (j + half)] = value;
             sum += value;
         }
     }
 
     // 정규화
-    for (int i = 0; i < 3; i++)
-        for (int j = 0; j < 3; j++)
-            mat[i][j] /= sum;
+    for (int i = 0; i < ksize * ksize; i++)
+        kernel[i] /= sum;
 
-    // 원하는 순서로 outKernel에 넣기
-    outKernel[0] = mat[1][1]; // center
-    outKernel[1] = mat[0][0]; // 좌상단
-    outKernel[2] = mat[0][1]; // 상단
-    outKernel[3] = mat[0][2]; // 우상단
-    outKernel[4] = mat[1][2]; // 오른쪽
-    outKernel[5] = mat[2][2]; // 우하단
-    outKernel[6] = mat[2][1]; // 아래
-    outKernel[7] = mat[2][0]; // 좌하단
-    outKernel[8] = mat[1][0]; // 왼쪽
+    return kernel;
 }
 
-// Zero Padding
-Mat zeroPadding(const Mat &src)
+// Zero Padding (ksize 맞춰서 패딩)
+Mat zeroPadding(const Mat &src, int pad)
 {
-    int newRows = src.rows + 2;
-    int newCols = src.cols + 2;
-
-    Mat paddedMat = Mat::zeros(newRows, newCols, CV_8UC1);
-
+    Mat paddedMat = Mat::zeros(src.rows + 2 * pad, src.cols + 2 * pad, CV_8UC1);
     for (int h = 0; h < src.rows; ++h)
     {
         for (int w = 0; w < src.cols; ++w)
         {
-            paddedMat.at<uchar>(h + 1, w + 1) = src.at<uchar>(h, w); // at 접근법
+            paddedMat.at<uchar>(h + pad, w + pad) = src.at<uchar>(h, w);
         }
     }
-
     return paddedMat;
 }
 
-Mat Gaussian_Filter(const Mat &src)
+// Gaussian Filter (ksize, sigma 인자로 받음)
+Mat Gaussian_Filter(const Mat &src, int ksize, double sigma)
 {
-    Mat PaddedSrc = zeroPadding(src);
+    int pad = ksize / 2;
+    Mat PaddedSrc = zeroPadding(src, pad);
 
-    // 원본 데이터 접근
-    unsigned char *pData;
-    pData = (unsigned char *)PaddedSrc.data;
-
-    // OutputImage
     Mat output = Mat::zeros(src.rows, src.cols, CV_8UC1);
 
-    unsigned char *outData;
-    outData = (unsigned char *)output.data;
+    const unsigned char *pData = PaddedSrc.data;
+    unsigned char *outData = output.data;
 
-    double kernel[9];
-    createGaussian3x3_CenterFirst(0.3, kernel);
+    vector<double> kernel = createGaussianKernel(ksize, sigma);
 
-    for (int h = 1; h < PaddedSrc.rows - 1; ++h)
+    for (int h = pad; h < PaddedSrc.rows - pad; ++h)
     {
-        for (int w = 1; w < PaddedSrc.cols - 1; ++w)
+        for (int w = pad; w < PaddedSrc.cols - pad; ++w)
         {
-            double Gaussian = pData[h * PaddedSrc.cols + w] * kernel[0];
-            for (int i = 0; i < 8; i++) // 가운데 픽셀 기준으로 좌상단부터 시계방향으로 누적합 계산
+            double Gaussian = 0.0;
+
+            // ksize x ksize convolution
+            for (int i = -pad; i <= pad; i++)
             {
-                Gaussian += pData[(h + wy[i]) * PaddedSrc.cols + (w + wx[i])] * kernel[i + 1];
+                for (int j = -pad; j <= pad; j++)
+                {
+                    int idx = (i + pad) * ksize + (j + pad);
+                    Gaussian += pData[(h + i) * PaddedSrc.cols + (w + j)] * kernel[idx];
+                }
             }
 
-            if (Gaussian < 0.0)
-                Gaussian = 0.0;
-            else if (Gaussian > 255.0)
-                Gaussian = 255.0;
-
-            outData[(h - 1) * output.cols + (w - 1)] = static_cast<unsigned char>(std::lround(Gaussian));
+            // 값 범위 조정
+            Gaussian = std::clamp(Gaussian, 0.0, 255.0);
+            outData[(h - pad) * output.cols + (w - pad)] = static_cast<unsigned char>(std::lround(Gaussian));
         }
     }
 
@@ -111,12 +96,15 @@ int main(void)
         return -1;
     }
 
-    Mat dstImg = Gaussian_Filter(src); // Average Filter 적용
+    Mat dst3_01 = Gaussian_Filter(src, 7, 0.1);
+    Mat dst3_1 = Gaussian_Filter(src, 7, 1.0);
+    Mat dst3_5 = Gaussian_Filter(src, 7, 5.0);
 
     imshow("Original", src);
-    imshow("Gaussian Filter, sigma = 0.3", dstImg);
+    imshow("Gaussian Filter 7x7 sigma=0.1", dst3_01);
+    imshow("Gaussian Filter 7x7 sigma=1.0", dst3_1);
+    imshow("Gaussian Filter 7x7 sigma=5.0", dst3_5);
 
     waitKey(0);
-
     return 0;
 }
