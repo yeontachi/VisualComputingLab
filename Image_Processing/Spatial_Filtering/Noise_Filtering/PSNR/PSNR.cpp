@@ -35,17 +35,14 @@ static double PSNR(const Mat &src, const Mat &dst)
 
 int main(void)
 {
-    Mat src = imread("Lena.png", IMREAD_GRAYSCALE);         // 원본
-    Mat noise = imread("Lena_Noise.png", IMREAD_GRAYSCALE); // 노이즈 영상
+    Mat src = imread("Lena.png", IMREAD_GRAYSCALE);       // 원본
+    Mat GN_AMF = imread("GN_MF.png", IMREAD_GRAYSCALE);   // 노이즈 영상
+    Mat SPN_AMF = imread("SPN_MF.png", IMREAD_GRAYSCALE); // 노이즈 영상
 
-    if (src.empty() || noise.empty())
-    {
-        cerr << "Image Not Found\n";
-        return -1;
-    }
-
-    double psnr = PSNR(src, noise);
-    cout << "PSNR: " << psnr << " dB\n";
+    double psnr1 = PSNR(src, GN_AMF);
+    double psnr2 = PSNR(src, SPN_AMF);
+    cout << "PSNR(Median Filter, GaussianNoise): " << psnr1 << " dB\n";
+    cout << "PSNR(Median Filter, SaltAndPepperNoise): " << psnr2 << " dB\n";
 
     return 0;
 }

@@ -28,3 +28,19 @@ PSNR 값이 클수록 두 영상이 유사하다.
 | 30~40 dB  | 품질 양호, 약간 차이 있음 |
 | 20~30 dB  | 눈에 띄는 손상 존재     |
 | < 20 dB   | 심각한 손상          |
+
+
+### Gauusian Noise
+![alt text](/Image_Processing/Spatial_Filtering/Noise_Filtering/PSNR/Images/GaussianNoise.png)
+
+### Salt and Pepper Noise
+![alt text](/Image_Processing/Spatial_Filtering/Noise_Filtering/PSNR/Images/SaltAndPepper.png)
+
+### Adaptive Median Filter
+![alt text](/Image_Processing/Spatial_Filtering/Noise_Filtering/PSNR/Images/AdaptiveMedianFilter.png)
+
+### Geometric Mean Filter
+![alt text](/Image_Processing/Spatial_Filtering/Noise_Filtering/PSNR/Images/GeometricMeanFilter.png)
+
+### Median Filter
+![alt text](/Image_Processing/Spatial_Filtering/Noise_Filtering/PSNR/Images/MedianFilter.png)

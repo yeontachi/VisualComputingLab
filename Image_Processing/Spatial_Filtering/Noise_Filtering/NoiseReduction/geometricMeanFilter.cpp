@@ -100,6 +100,8 @@ int main(void)
 
     imshow("GN_geometricMeanFilter", GNout);
     imshow("SPN_geometricMeanFilter", SPNout);
+    imwrite("GN_gmf.png", GNout);
+    imwrite("SPN_gmf.png", SPNout);
 
     waitKey(0);
 
