@@ -35,14 +35,27 @@ static double PSNR(const Mat &src, const Mat &dst)
 
 int main(void)
 {
-    Mat src = imread("Lena.png", IMREAD_GRAYSCALE);       // 원본
-    Mat GN_AMF = imread("GN_MF.png", IMREAD_GRAYSCALE);   // 노이즈 영상
-    Mat SPN_AMF = imread("SPN_MF.png", IMREAD_GRAYSCALE); // 노이즈 영상
+    Mat src = imread("Lena.png", IMREAD_GRAYSCALE);
+    Mat GN05 = imread("SPN005_Median.png", IMREAD_GRAYSCALE);
+    Mat GN10 = imread("SPN010_Median.png", IMREAD_GRAYSCALE);
+    Mat GN30 = imread("SPN025_Median.png", IMREAD_GRAYSCALE);
+    Mat GN055 = imread("SPN005_AdaptiveMedian.png", IMREAD_GRAYSCALE);
+    Mat GN105 = imread("SPN010_AdaptiveMedian.png", IMREAD_GRAYSCALE);
+    Mat GN305 = imread("SPN025_AdaptiveMedian.png", IMREAD_GRAYSCALE);
 
-    double psnr1 = PSNR(src, GN_AMF);
-    double psnr2 = PSNR(src, SPN_AMF);
-    cout << "PSNR(Median Filter, GaussianNoise): " << psnr1 << " dB\n";
-    cout << "PSNR(Median Filter, SaltAndPepperNoise): " << psnr2 << " dB\n";
+    double psnr1 = PSNR(src, GN05);
+    double psnr2 = PSNR(src, GN10);
+    double psnr3 = PSNR(src, GN30);
+    double psnr4 = PSNR(src, GN055);
+    double psnr5 = PSNR(src, GN105);
+    double psnr6 = PSNR(src, GN305);
+
+    cout << "PSNR(median, 005): " << psnr1 << " dB\n";
+    cout << "PSNR(median, 010): " << psnr2 << " dB\n";
+    cout << "PSNR(median, 025): " << psnr3 << " dB\n";
+    cout << "PSNR(AdaptiveMedian, 005): " << psnr4 << " dB\n";
+    cout << "PSNR(AdaptiveMedian, 010): " << psnr5 << " dB\n";
+    cout << "PSNR(AdaptiveMedian, 025): " << psnr6 << " dB\n";
 
     return 0;
 }
