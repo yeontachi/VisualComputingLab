@@ -6,7 +6,82 @@
 using namespace std;
 using namespace cv;
 
+// 채널 Split(컬러 영상을 Split해 단일 채널 함수에 적용)
+void SplitChannel(const Mat &src, Mat &B, Mat &G, Mat &R)
+{
+    CV_Assert(src.type() == CV_8UC3);
+
+    int rows = src.rows;
+    int cols = src.cols;
+
+    B.create(rows, cols, CV_8UC1);
+    G.create(rows, cols, CV_8UC1);
+    R.create(rows, cols, CV_8UC1);
+
+    const uchar *srcData = src.data;
+    uchar *bData = B.data;
+    uchar *gData = G.data;
+    uchar *rData = R.data;
+
+    size_t sstep = src.step; // 한 행의 바이트 수 (3 * cols)
+    size_t bstep = B.step;   // 단일채널 행 바이트 수
+
+    for (int h = 0; h < rows; ++h)
+    {
+        const uchar *srcRow = srcData + h * sstep;
+        uchar *bRow = bData + h * bstep;
+        uchar *gRow = gData + h * bstep;
+        uchar *rRow = rData + h * bstep;
+
+        for (int w = 0; w < cols; ++w)
+        {
+            bRow[w] = srcRow[w * 3 + 0]; // Blue
+            gRow[w] = srcRow[w * 3 + 1]; // Green
+            rRow[w] = srcRow[w * 3 + 2]; // Red
+        }
+    }
+}
+
+// 채널 merge(Split된 B,G,R 채널을 다시 Merge)
+Mat MergeChannel(const Mat &B, const Mat &G, const Mat &R)
+{
+    CV_Assert(B.type() == CV_8UC1 && G.type() == CV_8UC1 && R.type() == CV_8UC1);
+    CV_Assert(B.size() == G.size() && B.size() == R.size());
+
+    int rows = B.rows;
+    int cols = B.cols;
+
+    Mat dst(rows, cols, CV_8UC3);
+    uchar *dstData = dst.data;
+
+    const uchar *bData = B.data;
+    const uchar *gData = G.data;
+    const uchar *rData = R.data;
+
+    size_t dstep = dst.step;
+    size_t bstep = B.step;
+
+    for (int h = 0; h < rows; ++h)
+    {
+        const uchar *bRow = bData + h * bstep;
+        const uchar *gRow = gData + h * bstep;
+        const uchar *rRow = rData + h * bstep;
+
+        uchar *dstRow = dstData + h * dstep;
+
+        for (int w = 0; w < cols; ++w)
+        {
+            dstRow[w * 3 + 0] = bRow[w]; // Blue
+            dstRow[w * 3 + 1] = gRow[w]; // Green
+            dstRow[w * 3 + 2] = rRow[w]; // Red
+        }
+    }
+
+    return dst;
+}
+
 // Zero Padding 함수
+// 단일 채널에 대해 적용하며, 이후 Color Image Filtering에서 각 채널별로 적용
 Mat ZeroPadding(const Mat &src, int n)
 {
     CV_Assert(src.type() == CV_8UC1);
@@ -25,6 +100,7 @@ Mat ZeroPadding(const Mat &src, int n)
 }
 
 // 단일 채널 필터링 함수
+// 컬러 영상의 경우 B,G,R 채널 순으로 각각 필터링 적용
 Mat FilteringGray(const Mat &src, const vector<float> &kernel, int n)
 {
     CV_Assert(src.type() == CV_8UC1);
@@ -65,20 +141,20 @@ Mat FilteringGray(const Mat &src, const vector<float> &kernel, int n)
 }
 
 // 컬러 영상 필터링 함수 (BGR 각 채널에 적용)
+// 컬러영상을 Split한 후, 채널 별로 필터링 적용 후 다시 Merge
+// 이전에 구현한 Split, Merge 함수를 그대로 이용
 Mat FilteringColor(const Mat &src, const vector<float> &kernel, int n)
 {
     CV_Assert(src.type() == CV_8UC3);
 
-    vector<Mat> ch(3);
-    split(src, ch);
+    Mat B, G, R;
+    SplitChannel(src, B, G, R); // 포인터 기반 Split
 
-    for (int i = 0; i < 3; ++i)
-    {
-        ch[i] = FilteringGray(ch[i], kernel, n);
-    }
+    B = FilteringGray(B, kernel, n);
+    G = FilteringGray(G, kernel, n);
+    R = FilteringGray(R, kernel, n);
 
-    Mat dst;
-    merge(ch, dst);
+    Mat dst = MergeChannel(B, G, R); // 포인터 기반 Merge5
     return dst;
 }
 
@@ -117,12 +193,12 @@ int main()
         return -1;
     }
 
-    cout << "Filter Type (avg/laplacian/sharpen): ";
+    cout << "Filter Type (avg/laplacian/sharpen): "; // 필터 타입 입력받기
     string filterType;
     cin >> filterType;
 
     vector<float> kernel;
-    int n = 1; // 기본 필터 크기 n=1 → 3x3
+    int n = 1; // 기본 필터 크기 n=1 -> 3x3
 
     if (filterType == "avg")
     {
