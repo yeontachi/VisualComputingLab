@@ -101,7 +101,6 @@ int main(void)
         cerr << "Image Not Found" << "\n";
         return -1;
     }
-    imshow("Original", src);
 
     for (int i = 0; i < 256; ++i)
     {
