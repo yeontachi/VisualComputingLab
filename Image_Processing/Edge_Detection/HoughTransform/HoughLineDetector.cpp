@@ -1,31 +1,33 @@
 #include <opencv2/opencv.hpp>
 #include <iostream>
-
 using namespace std;
 using namespace cv;
 
 static Mat src, grayImg, edges, vis;
 static int cannyLow = 50, cannyHigh = 150;
-static int rhoTimes10 = 10;
-static int thetaDeg = 1;
-static int houghThresh = 50;
-static int minLineLen = 50;
-static int maxLineGap = 10;
+static int rhoTimes10 = 10;  // rho = rhoTimes10/10 (픽셀)
+static int thetaDeg = 1;     // theta = thetaDeg * CV_PI / 180
+static int houghThresh = 50; // 누적 임계값
+static int minLineLen = 50;  // 최소 선 길이(px)
+static int maxLineGap = 10;  // 같은 선으로 간주할 최대 간격(px)
 
 static void run(int = 0, void * = nullptr)
 {
+    // 1) Canny
     Canny(grayImg, edges, cannyLow, cannyHigh);
 
-    // 허프 라인 디텍터
-    double rho = max(1, rhoTimes10) / 10.0; // 0방지
+    // 2) HoughLinesP
+    double rho = std::max(1, rhoTimes10) / 10.0; // 0 방지
     double theta = thetaDeg * CV_PI / 180.0;
     vector<Vec4i> lines;
     HoughLinesP(edges, lines, rho, theta, houghThresh, (double)minLineLen, (double)maxLineGap);
 
+    // 3) 시각화
     cvtColor(edges, vis, COLOR_GRAY2BGR);
     for (const auto &l : lines)
         line(vis, Point(l[0], l[1]), Point(l[2], l[3]), Scalar(0, 255, 0), 2, LINE_AA);
 
+    // 4) 정보 표시
     putText(vis, format("Canny=(%d,%d)  rho=%.1f  theta=%ddeg  thr=%d  minLen=%d  maxGap=%d  #lines=%zu", cannyLow, cannyHigh, rho, thetaDeg, houghThresh, minLineLen, maxLineGap, lines.size()),
             Point(10, 25), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(0, 200, 255), 2);
 
@@ -33,18 +35,17 @@ static void run(int = 0, void * = nullptr)
     imshow("HoughLinesP result", vis);
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
-    Mat src = imread("highway.png");
-
+    string path = (argc > 1) ? argv[1] : "test.png"; // 이미지 경로
+    src = imread(path);
     if (src.empty())
     {
-        cerr << "Image Not Found" << "\n";
+        cerr << "Image Not Found: " << path << "\n";
         return -1;
     }
-
     cvtColor(src, grayImg, COLOR_BGR2GRAY);
-    GaussianBlur(grayImg, grayImg, Size(3, 3), 0.8);
+    GaussianBlur(grayImg, grayImg, Size(3, 3), 0.8); // 약간의 블러로 잡음 억제
 
     namedWindow("HoughLinesP result", WINDOW_AUTOSIZE);
     namedWindow("edges", WINDOW_AUTOSIZE);
