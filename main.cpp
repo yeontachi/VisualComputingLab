@@ -1,125 +1,187 @@
 #include <opencv2/opencv.hpp>
 #include <iostream>
+#include <cmath>
 
 using namespace std;
 using namespace cv;
 
-static inline unsigned char clamp8(int v)
+// ======================= 유틸 함수 =======================
+static inline double pixelDist(const Vec3b &a, const Vec3b &b)
 {
-    return (unsigned char)std::max(0, std::min(255, v));
+    double db = a[0] - b[0];
+    double dg = a[1] - b[1];
+    double dr = a[2] - b[2];
+    return sqrt(db * db + dg * dg + dr * dr);
 }
 
-// Zero Padding
-Mat ZeroPadding(const Mat &src, int pad)
+static inline unsigned char calCenter(unsigned char lo, unsigned char hi)
 {
-    Mat paddedMat = Mat::zeros(src.rows + 2 * pad, src.cols + 2 * pad, CV_8UC1);
-
-    for (int h = 0; h < src.rows; ++h)
-    {
-        for (int w = 0; w < src.cols; ++w)
-        {
-            paddedMat.at<uchar>(h + pad, w + pad) = src.at<uchar>(h, w);
-        }
-    }
-
-    return paddedMat;
+    return static_cast<unsigned char>(((int)lo + (int)hi) / 2);
 }
 
-// Median Filter
-Mat MedianFilter(const Mat &src, int ksize)
+// ======================= 피부색 판별 함수 =======================
+static inline bool isFace(const Vec3b &pixel)
 {
-    if (src.empty())
-        throw runtime_error("empty Image");
-    if (src.type() != CV_8UC1)
-        throw runtime_error("use 8-bit grayscale");
-    if (ksize <= 0 || (ksize % 2) == 0)
-        throw runtime_error("ksize must be odd and >0");
+    // 네가 준 로직 그대로
+    static const Vec3b LOW(94, 121, 171);   // B, G, R (하한)
+    static const Vec3b HIGH(202, 202, 226); // B, G, R (상한)
+    static const Vec3b center(
+        calCenter(LOW[0], HIGH[0]),
+        calCenter(LOW[1], HIGH[1]),
+        calCenter(LOW[2], HIGH[2]));
+    static const double radius = pixelDist(LOW, HIGH) / 2;
 
-    const int pad = ksize / 2;
-    Mat padded = ZeroPadding(src, pad);
-    Mat dst(src.rows, src.cols, CV_8UC1, Scalar(0));
+    return pixelDist(pixel, center) < radius;
+}
 
-    const int W = padded.cols;
-    const unsigned char *pData = padded.ptr<unsigned char>(0);
-    unsigned char *outData = dst.ptr<unsigned char>(0);
+// ======================= 평균 필터 (박스 필터) =======================
+Mat meanFilter(const Mat &src, int ksize)
+{
+    CV_Assert(src.type() == CV_8UC3);
+    Mat dst(src.size(), src.type());
 
-    for (int h = pad; h < padded.rows - pad; ++h)
+    int radius = ksize / 2;
+    unsigned char *pSrc = src.data;
+    unsigned char *pDst = dst.data;
+
+    int step = src.step;
+
+    for (int y = 0; y < src.rows; ++y)
     {
-        for (int w = pad; w < padded.cols - pad; ++w)
+        for (int x = 0; x < src.cols; ++x)
         {
-            vector<uchar> window;
-            window.reserve(ksize * ksize);
+            int sumB = 0, sumG = 0, sumR = 0;
+            int count = 0;
 
-            for (int y = -pad; y <= pad; ++y)
+            for (int dy = -radius; dy <= radius; ++dy)
             {
-                const uchar *row = padded.ptr<uchar>(h + y);
-                for (int x = -pad; x <= pad; ++x)
+                for (int dx = -radius; dx <= radius; ++dx)
                 {
-                    window.push_back(row[w + x]);
+                    int ny = y + dy;
+                    int nx = x + dx;
+
+                    if (ny >= 0 && ny < src.rows && nx >= 0 && nx < src.cols)
+                    {
+                        unsigned char *pN = pSrc + ny * step + nx * 3;
+                        sumB += pN[0];
+                        sumG += pN[1];
+                        sumR += pN[2];
+                        count++;
+                    }
                 }
             }
 
-            // 오름차순 정렬
-            sort(window.begin(), window.end());
-
-            // median
-            int mid = window.size() / 2;
-            outData[(h - pad) * src.cols + (w - pad)] = window[mid];
+            unsigned char *pOut = pDst + y * step + x * 3;
+            pOut[0] = static_cast<unsigned char>(sumB / count);
+            pOut[1] = static_cast<unsigned char>(sumG / count);
+            pOut[2] = static_cast<unsigned char>(sumR / count);
         }
     }
+
     return dst;
 }
 
-int main(void)
+// ======================= 메인 =======================
+int main()
 {
-    Mat GN10 = imread("GaussianNoise10.png", IMREAD_GRAYSCALE); // 가우시안 노이즈 이미지
-    if (GN10.empty())
+    Mat src = imread("face.jpg"); // 입력 영상
+    if (src.empty())
     {
-        cerr << "Image Not Found" << "\n";
-        return -1;
-    }
-    Mat GN25 = imread("GaussianNoise25.png", IMREAD_GRAYSCALE); // 가우시안 노이즈 이미지
-    if (GN25.empty())
-    {
-        cerr << "Image Not Found" << "\n";
+        cerr << "Image not found!" << endl;
         return -1;
     }
 
-    Mat SPN005 = imread("lena512SPN005.png", IMREAD_GRAYSCALE); // 소금후추 노이즈 이미지
-    if (SPN005.empty())
+    // 크면 축소 (가로 기준 1024)
+    if (src.cols > 1024)
     {
-        cerr << "Image Not Found" << "\n";
-        return -1;
-    }
-    Mat SPN010 = imread("lena512SPN010.png", IMREAD_GRAYSCALE); // 소금후추 노이즈 이미지
-    if (SPN010.empty())
-    {
-        cerr << "Image Not Found" << "\n";
-        return -1;
+        double scale = 1024.0 / src.cols;
+        int newH = cvRound(src.rows * scale);
+        resize(src, src, Size(1024, newH), 0, 0, INTER_AREA);
     }
 
-    int ksize = 3; // filter 사이즈
-    cout << "커널 사이즈: ";
-    cin >> ksize;
+    Mat dst = Mat::zeros(src.size(), src.type());  // Color Slicing 결과
+    Mat faceMap = Mat::zeros(src.size(), CV_8UC1); // 얼굴 영역 Map (0 or 255)
 
-    Mat GN10out = MedianFilter(GN10, ksize);
-    Mat GN25out = MedianFilter(GN25, ksize);
+    // =================== Step #1: Color Slicing ===================
+    unsigned char *pSrc = src.data;
+    unsigned char *pDst = dst.data;
+    unsigned char *pMap = faceMap.data;
 
-    Mat SPN005out = MedianFilter(SPN005, ksize);
-    Mat SPN010out = MedianFilter(SPN010, ksize);
+    int stepSrc = src.step;
+    int stepDst = dst.step;
+    int stepMap = faceMap.step;
 
-    imshow("Gaussian Noise10", GN10);
-    imshow("Gaussian Noise25", GN25);
-    imshow("Salt and Pepper Noise 0.05", SPN005);
-    imshow("Salt and Pepper Noise 0.10", SPN010);
+    for (int y = 0; y < src.rows; ++y)
+    {
+        unsigned char *rowS = pSrc + y * stepSrc;
+        unsigned char *rowD = pDst + y * stepDst;
+        unsigned char *rowM = pMap + y * stepMap;
 
-    imshow("GN10_MedianFilter", GN10out);
-    imshow("GN25_MedianFilter", GN25out);
+        for (int x = 0; x < src.cols; ++x)
+        {
+            unsigned char B = rowS[x * 3 + 0];
+            unsigned char G = rowS[x * 3 + 1];
+            unsigned char R = rowS[x * 3 + 2];
+            Vec3b pixel(B, G, R);
 
-    imshow("SPN005_MedianFilter", SPN005out);
-    imshow("SPN010_MedianFilter", SPN010out);
+            if (isFace(pixel))
+            {
+                // 얼굴 색일 경우 → 원본 복사
+                rowD[x * 3 + 0] = B;
+                rowD[x * 3 + 1] = G;
+                rowD[x * 3 + 2] = R;
+                rowM[x] = 255;
+            }
+            else
+            {
+                // 얼굴색이 아닐 경우 → 검정색
+                rowD[x * 3 + 0] = 0;
+                rowD[x * 3 + 1] = 0;
+                rowD[x * 3 + 2] = 0;
+                rowM[x] = 0;
+            }
+        }
+    }
+
+    imwrite("face_colorSlicing.png", dst);
+    imwrite("face_map.png", faceMap);
+
+    // =================== Step #2: Smoothing + 합성 ===================
+    Mat smooth = meanFilter(src, 7); // 얼굴에 적용할 스무딩 필터 (7x7)
+    Mat final = src.clone();
+
+    unsigned char *pSmooth = smooth.data;
+    unsigned char *pFinal = final.data;
+    unsigned char *pMask = faceMap.data;
+
+    int stepSmooth = smooth.step;
+    int stepFinal = final.step;
+
+    for (int y = 0; y < src.rows; ++y)
+    {
+        unsigned char *rowS = pSmooth + y * stepSmooth;
+        unsigned char *rowF = pFinal + y * stepFinal;
+        unsigned char *rowM = pMask + y * stepMap;
+
+        for (int x = 0; x < src.cols; ++x)
+        {
+            if (rowM[x] == 255) // 얼굴 영역이면 스무딩 결과 사용
+            {
+                rowF[x * 3 + 0] = rowS[x * 3 + 0];
+                rowF[x * 3 + 1] = rowS[x * 3 + 1];
+                rowF[x * 3 + 2] = rowS[x * 3 + 2];
+            }
+        }
+    }
+
+    // =================== 결과 출력 ===================
+    imshow("Original", src);
+    imshow("Color Slicing", dst);
+    imshow("Face Map", faceMap);
+    imshow("Smoothed Face", final);
+
+    imwrite("final_beautyShot.png", final);
 
     waitKey(0);
-
     return 0;
 }
