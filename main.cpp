@@ -4,122 +4,130 @@
 using namespace std;
 using namespace cv;
 
-static inline unsigned char clamp8(int v)
+// RGB 공간상 구의 반지름
+static double pixelDist(const Vec3b &a, const Vec3b &b)
 {
-    return (unsigned char)std::max(0, std::min(255, v));
+    double db = a[0] - b[0];
+    double dg = a[1] - b[1];
+    double dr = a[2] - b[2];
+
+    return sqrt(db * db + dg * dg + dr * dr);
 }
 
-// Zero Padding
-Mat ZeroPadding(const Mat &src, int pad)
+// 각 좌표별 중앙값 구하기(3채널 중심점 찾기 위함)
+static unsigned char calCenter(unsigned char lo, unsigned char hi)
 {
-    Mat paddedMat = Mat::zeros(src.rows + 2 * pad, src.cols + 2 * pad, CV_8UC1);
-
-    for (int h = 0; h < src.rows; ++h)
-    {
-        for (int w = 0; w < src.cols; ++w)
-        {
-            paddedMat.at<uchar>(h + pad, w + pad) = src.at<uchar>(h, w);
-        }
-    }
-
-    return paddedMat;
+    return static_cast<unsigned char>(((int)lo + (int)hi) / 2);
 }
 
-// Median Filter
-Mat MedianFilter(const Mat &src, int ksize)
+static bool isBerry(const Vec3b &pixel)
 {
-    if (src.empty())
-        throw runtime_error("empty Image");
-    if (src.type() != CV_8UC1)
-        throw runtime_error("use 8-bit grayscale");
-    if (ksize <= 0 || (ksize % 2) == 0)
-        throw runtime_error("ksize must be odd and >0");
+    static const Vec3b LOW(7, 15, 141);
+    static const Vec3b HIGH(146, 119, 205);
+    static const Vec3b center(calCenter(LOW[0], HIGH[0]), calCenter(LOW[1], HIGH[1]), calCenter(LOW[2], HIGH[2]));
 
-    const int pad = ksize / 2;
-    Mat padded = ZeroPadding(src, pad);
-    Mat dst(src.rows, src.cols, CV_8UC1, Scalar(0));
+    static const double radius = pixelDist(LOW, HIGH) / 2;
 
-    const int W = padded.cols;
-    const unsigned char *pData = padded.ptr<unsigned char>(0);
-    unsigned char *outData = dst.ptr<unsigned char>(0);
+    return pixelDist(pixel, center) < radius;
+}
+Mat meanFilter(const Mat &src, int ksize)
+{
+    CV_Assert(src.type() == CV_8UC3);
+    Mat dst(src.size(), src.type());
 
-    for (int h = pad; h < padded.rows - pad; ++h)
+    int radius = ksize / 2;
+    unsigned char *pSrc = src.data;
+    unsigned char *pDst = dst.data;
+
+    int step = src.step;
+
+    for (int y = 0; y < src.rows; ++y)
     {
-        for (int w = pad; w < padded.cols - pad; ++w)
+        for (int x = 0; x < src.cols; ++x)
         {
-            vector<uchar> window;
-            window.reserve(ksize * ksize);
+            int sumB = 0, sumG = 0, sumR = 0;
+            int count = 0;
 
-            for (int y = -pad; y <= pad; ++y)
+            for (int dy = -radius; dy <= radius; ++dy)
             {
-                const uchar *row = padded.ptr<uchar>(h + y);
-                for (int x = -pad; x <= pad; ++x)
+                for (int dx = -radius; dx <= radius; ++dx)
                 {
-                    window.push_back(row[w + x]);
+                    int ny = y + dy;
+                    int nx = x + dx;
+
+                    if (ny >= 0 && ny < src.rows && nx >= 0 && nx < src.cols)
+                    {
+                        unsigned char *pN = pSrc + ny * step + nx * 3;
+                        sumB += pN[0];
+                        sumG += pN[1];
+                        sumR += pN[2];
+                        count++;
+                    }
                 }
             }
 
-            // 오름차순 정렬
-            sort(window.begin(), window.end());
-
-            // median
-            int mid = window.size() / 2;
-            outData[(h - pad) * src.cols + (w - pad)] = window[mid];
+            unsigned char *pOut = pDst + y * step + x * 3;
+            pOut[0] = static_cast<unsigned char>(sumB / count);
+            pOut[1] = static_cast<unsigned char>(sumG / count);
+            pOut[2] = static_cast<unsigned char>(sumR / count);
         }
     }
+
     return dst;
 }
-
 int main(void)
 {
-    Mat GN10 = imread("GaussianNoise10.png", IMREAD_GRAYSCALE); // 가우시안 노이즈 이미지
-    if (GN10.empty())
-    {
-        cerr << "Image Not Found" << "\n";
-        return -1;
-    }
-    Mat GN25 = imread("GaussianNoise25.png", IMREAD_GRAYSCALE); // 가우시안 노이즈 이미지
-    if (GN25.empty())
+    Mat src = imread("Strawberries.jpg");
+
+    if (src.empty())
     {
         cerr << "Image Not Found" << "\n";
         return -1;
     }
 
-    Mat SPN005 = imread("lena512SPN005.png", IMREAD_GRAYSCALE); // 소금후추 노이즈 이미지
-    if (SPN005.empty())
+    // Color Slicing
+    Mat dst(src.rows, src.cols, CV_8UC3);
+
+    for (int y = 0; y < src.rows; ++y)
     {
-        cerr << "Image Not Found" << "\n";
-        return -1;
+        for (int x = 0; x < src.cols; ++x)
+        {
+            const Vec3b &p = src.at<Vec3b>(y, x); // 원본 영상에서 현재 픽셀값 접근
+
+            if (isBerry(p))
+            {
+                // 딸기(선택 영역)는 원본 색 유지
+                dst.at<Vec3b>(y, x) = p;
+            }
+            else
+            {
+                // 배경 검정색
+                dst.at<Vec3b>(y, x) = Vec3b(0, 0, 0);
+            }
+        }
     }
-    Mat SPN010 = imread("lena512SPN010.png", IMREAD_GRAYSCALE); // 소금후추 노이즈 이미지
-    if (SPN010.empty())
+
+    Mat smooth = meanFilter(src, 13);
+    Mat final = src.clone();
+
+    unsigned char *pSmooth = smooth.data;
+    unsigned char *pFinal = final.data;
+
+    int stepSmooth = smooth.step;
+    int stepFinal = final.step;
+
+    for (int h = 0; h < src.rows; ++h)
     {
-        cerr << "Image Not Found" << "\n";
-        return -1;
+        unsigned char *rowS = pSmooth + h * stepSmooth;
+        unsigned char *rowF = pFinal + h * stepFinal;
+        for (int w = 0; w < src.cols; ++w)
+        {
+        }
     }
 
-    int ksize = 3; // filter 사이즈
-    cout << "커널 사이즈: ";
-    cin >> ksize;
-
-    Mat GN10out = MedianFilter(GN10, ksize);
-    Mat GN25out = MedianFilter(GN25, ksize);
-
-    Mat SPN005out = MedianFilter(SPN005, ksize);
-    Mat SPN010out = MedianFilter(SPN010, ksize);
-
-    imshow("Gaussian Noise10", GN10);
-    imshow("Gaussian Noise25", GN25);
-    imshow("Salt and Pepper Noise 0.05", SPN005);
-    imshow("Salt and Pepper Noise 0.10", SPN010);
-
-    imshow("GN10_MedianFilter", GN10out);
-    imshow("GN25_MedianFilter", GN25out);
-
-    imshow("SPN005_MedianFilter", SPN005out);
-    imshow("SPN010_MedianFilter", SPN010out);
+    imshow("Original", src);
+    imshow("Color Sliced", dst);
 
     waitKey(0);
-
     return 0;
 }
