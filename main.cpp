@@ -1,133 +1,106 @@
+/*
+Intensity Level Slicing 함수를 생성하고,
+각 채널 (RGB)에 대해 따로 적용하여,
+각 채널 별 Low, High 값을 임계값으로 두고 Slicing을 적용한다.
+*/
 #include <opencv2/opencv.hpp>
 #include <iostream>
+#include <vector>
+#include <algorithm>
 
 using namespace std;
 using namespace cv;
 
-// RGB 공간상 구의 반지름
-static double pixelDist(const Vec3b &a, const Vec3b &b)
+// 단일 채널 Intensity Level Slicing
+static inline Mat IntensityLevelSlicing(const Mat &ch, int Low, int High)
 {
-    double db = a[0] - b[0];
-    double dg = a[1] - b[1];
-    double dr = a[2] - b[2];
+    Low = std::clamp(Low, 0, 255);
+    High = std::clamp(High, 0, 255);
+    if (Low > High)
+        std::swap(Low, High);
 
-    return sqrt(db * db + dg * dg + dr * dr);
-}
+    Mat out = ch.clone();
+    const int rows = ch.rows, cols = ch.cols;
 
-// 각 좌표별 중앙값 구하기(3채널 중심점 찾기 위함)
-static unsigned char calCenter(unsigned char lo, unsigned char hi)
-{
-    return static_cast<unsigned char>(((int)lo + (int)hi) / 2);
-}
-
-static bool isBerry(const Vec3b &pixel)
-{
-    static const Vec3b LOW(7, 15, 141);
-    static const Vec3b HIGH(146, 119, 205);
-    static const Vec3b center(calCenter(LOW[0], HIGH[0]), calCenter(LOW[1], HIGH[1]), calCenter(LOW[2], HIGH[2]));
-
-    static const double radius = pixelDist(LOW, HIGH) / 2;
-
-    return pixelDist(pixel, center) < radius;
-}
-Mat meanFilter(const Mat &src, int ksize)
-{
-    CV_Assert(src.type() == CV_8UC3);
-    Mat dst(src.size(), src.type());
-
-    int radius = ksize / 2;
-    unsigned char *pSrc = src.data;
-    unsigned char *pDst = dst.data;
-
-    int step = src.step;
-
-    for (int y = 0; y < src.rows; ++y)
+    for (int h = 0; h < rows; ++h)
     {
-        for (int x = 0; x < src.cols; ++x)
+        const uchar *srcp = ch.ptr<uchar>(h);
+        uchar *dstp = out.ptr<uchar>(h);
+        for (int w = 0; w < cols; ++w)
         {
-            int sumB = 0, sumG = 0, sumR = 0;
-            int count = 0;
+            uchar v = srcp[w];
+            if (v < Low || v > High)
+                dstp[w] = 0;
+        }
+    }
+    return out;
+}
 
-            for (int dy = -radius; dy <= radius; ++dy)
+// 3채널 Color 영상 Slicing
+static inline Mat ColorSlicing(Mat &src)
+{
+    int R_low, R_high, G_low, G_high, B_low, B_high;
+
+    R_low = 70;
+    R_high = 205;
+    G_low = 15;
+    G_high = 109;
+    B_low = 7;
+    B_high = 131;
+
+    vector<Mat> ch(3);
+    split(src, ch);
+
+    Mat b, g, r;
+
+    b = IntensityLevelSlicing(ch[0], B_low, B_high);
+    g = IntensityLevelSlicing(ch[1], G_low, G_high);
+    r = IntensityLevelSlicing(ch[2], R_low, R_high);
+
+    for (int h = 0; h < src.rows; ++h)
+    {
+        for (int w = 0; w < src.cols; ++w)
+        {
+            uchar *bData = b.ptr<uchar>(h);
+            uchar *gData = g.ptr<uchar>(h);
+            uchar *rData = r.ptr<uchar>(h);
+
+            for (int w = 0; w < src.cols; ++w)
             {
-                for (int dx = -radius; dx <= radius; ++dx)
+                if (bData[w] == 0 || gData[w] == 0 || rData[w] == 0)
                 {
-                    int ny = y + dy;
-                    int nx = x + dx;
-
-                    if (ny >= 0 && ny < src.rows && nx >= 0 && nx < src.cols)
-                    {
-                        unsigned char *pN = pSrc + ny * step + nx * 3;
-                        sumB += pN[0];
-                        sumG += pN[1];
-                        sumR += pN[2];
-                        count++;
-                    }
+                    bData[w] = 0;
+                    gData[w] = 0;
+                    rData[w] = 0;
                 }
             }
-
-            unsigned char *pOut = pDst + y * step + x * 3;
-            pOut[0] = static_cast<unsigned char>(sumB / count);
-            pOut[1] = static_cast<unsigned char>(sumG / count);
-            pOut[2] = static_cast<unsigned char>(sumR / count);
         }
     }
 
-    return dst;
+    // 채널 다시 합침
+    Mat merged;
+    merge(vector<Mat>{b, g, r}, merged);
+
+    return merged;
 }
+
 int main(void)
 {
     Mat src = imread("Strawberries.jpg");
-
     if (src.empty())
     {
         cerr << "Image Not Found" << "\n";
         return -1;
     }
 
-    // Color Slicing
     Mat dst(src.rows, src.cols, CV_8UC3);
 
-    for (int y = 0; y < src.rows; ++y)
-    {
-        for (int x = 0; x < src.cols; ++x)
-        {
-            const Vec3b &p = src.at<Vec3b>(y, x); // 원본 영상에서 현재 픽셀값 접근
-
-            if (isBerry(p))
-            {
-                // 딸기(선택 영역)는 원본 색 유지
-                dst.at<Vec3b>(y, x) = p;
-            }
-            else
-            {
-                // 배경 검정색
-                dst.at<Vec3b>(y, x) = Vec3b(0, 0, 0);
-            }
-        }
-    }
-
-    Mat smooth = meanFilter(src, 13);
-    Mat final = src.clone();
-
-    unsigned char *pSmooth = smooth.data;
-    unsigned char *pFinal = final.data;
-
-    int stepSmooth = smooth.step;
-    int stepFinal = final.step;
-
-    for (int h = 0; h < src.rows; ++h)
-    {
-        unsigned char *rowS = pSmooth + h * stepSmooth;
-        unsigned char *rowF = pFinal + h * stepFinal;
-        for (int w = 0; w < src.cols; ++w)
-        {
-        }
-    }
+    dst = ColorSlicing(src);
 
     imshow("Original", src);
     imshow("Color Sliced", dst);
 
     waitKey(0);
+
     return 0;
 }
