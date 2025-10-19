@@ -23,7 +23,7 @@ static unsigned char calCenter(unsigned char lo, unsigned char hi)
 static bool isBerry(const Vec3b &pixel)
 {
     // BGR 기준 (OpenCV는 BGR)
-    static const Vec3b LOW(7, 15, 90);
+    static const Vec3b LOW(7, 15, 41);
     static const Vec3b HIGH(146, 119, 205);
     static const Vec3b center(
         calCenter(LOW[0], HIGH[0]),
@@ -61,7 +61,12 @@ int main(void)
             }
             else
             {
-                dst.at<Vec3b>(y, x) = 0;
+                // 배경은 그레이스케일로 변환
+                // OpenCV 관례의 BGR → Y(회색) 가중치 사용
+                // Y = 0.114B + 0.587G + 0.299R
+                double grayd = 0.114 * p[0] + 0.587 * p[1] + 0.299 * p[2];
+                unsigned char gray = static_cast<unsigned char>(std::min(255.0, std::max(0.0, grayd)));
+                dst.at<Vec3b>(y, x) = Vec3b(gray, gray, gray);
             }
         }
     }
