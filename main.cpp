@@ -84,7 +84,7 @@ Mat meanFilter(const Mat &src, int ksize)
 // ======================= 메인 =======================
 int main()
 {
-    Mat src = imread("resizedFace.png"); // 입력 영상
+    Mat src = imread("FaceImage.png"); // 입력 영상
     if (src.empty())
     {
         cerr << "Image not found!" << endl;
