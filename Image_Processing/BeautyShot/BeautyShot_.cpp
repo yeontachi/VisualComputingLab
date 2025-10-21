@@ -22,10 +22,7 @@ static inline unsigned char calCenter(unsigned char lo, unsigned char hi)
 // ======================= 피부색 판별 함수 =======================
 static inline bool isFace(const Vec3b &pixel)
 {
-<<<<<<< HEAD
     // 네가 준 로직 그대로
-=======
->>>>>>> main
     static const Vec3b LOW(94, 121, 171);   // B, G, R (하한)
     static const Vec3b HIGH(202, 202, 226); // B, G, R (상한)
     static const Vec3b center(
