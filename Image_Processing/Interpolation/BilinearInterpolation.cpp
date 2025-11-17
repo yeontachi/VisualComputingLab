@@ -6,8 +6,8 @@ using namespace cv;
 using namespace std;
 
 template <typename T>
-inline T clamp(T v, T lo, T hi)
-{ // Clamp 함수 범위 안에서 값을 잘라내기 위해 정의
+inline T clampl(T v, T lo, T hi)
+{ // clampl 함수 범위 안에서 값을 잘라내기 위해 정의
     if (v < lo)
         return lo;
     if (v > hi)
@@ -25,8 +25,8 @@ static inline unsigned char Bilinear_Interpolation(const Mat &src, int w, int h,
     double sx = w * rx; // 원본 사이즈 기준 추가된 픽셀의 비율적 실제 위치
     double sy = h * ry;
 
-    sx = clamp(sx, 0.0, double(W - 1)); // 경계 확인(안전장치)
-    sy = clamp(sy, 0.0, double(H - 1));
+    sx = clampl(sx, 0.0, double(W - 1)); // 경계 확인(안전장치)
+    sy = clampl(sy, 0.0, double(H - 1));
 
     int x0 = int(floor(sx)), y0 = int(floor(sy));
     int x1 = min(x0 + 1, W - 1), y1 = min(y0 + 1, H - 1);
@@ -44,7 +44,7 @@ static inline unsigned char Bilinear_Interpolation(const Mat &src, int w, int h,
     double q = (1.0 - b) * q1 + b * q2;
 
     int v = (int)std::lround(q);
-    return (uchar)clamp(v, 0, 255);
+    return (uchar)clampl(v, 0, 255);
 }
 
 int main()

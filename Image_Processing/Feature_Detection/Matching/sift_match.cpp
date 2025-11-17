@@ -16,7 +16,7 @@ static void detectSIFT(const Mat &img, vector<KeyPoint> &kps, Mat &desc)
 int main(void)
 {
     Mat img1 = imread("Lena.png");
-    Mat img2 = imread("Lena.png");
+    Mat img2 = imread("RotateLena.png");
 
     if (img1.empty() || img2.empty())
     {
