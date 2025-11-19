@@ -15,6 +15,12 @@ int main(void)
         cerr << "Image Not Found" << "\n";
         return -1;
     }
+    /*
+    Affine Transformation
+    좌상단 0, 우상단 1, 좌하단 2 로
+    원본 영상에서의 0,1,2값을 변환 후 영상에서 점 3개에 매핑시켜 행렬을 자동으로 만들어줌
+    "getAffineTransform"
+    */
 
     Point2f srcTri[3]; // 원본 영상에서의 점 3개
     srcTri[0] = Point2f(10.f, 30.f);
@@ -22,7 +28,7 @@ int main(void)
     srcTri[2] = Point2f(20.f, src.rows - 1.f);
 
     Point2f dstTri[3]; // 변환 후 영상에서의 점 3개
-    dstTri[0] = Point2f(50.f, src.rows - 0.33f);
+    dstTri[0] = Point2f(50.f, src.rows * 0.33f);
     dstTri[1] = Point2f(src.cols * 0.85f, src.rows * 0.25f);
     dstTri[2] = Point2f(src.cols * 0.15f, src.rows * 0.7f);
 
