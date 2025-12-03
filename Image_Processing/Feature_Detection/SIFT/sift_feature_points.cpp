@@ -23,7 +23,7 @@ int main(void)
     Ptr<SIFT> sift = SIFT::create(
         0,    // nfeatures: 상한(0=자동)
         3,    // nOctaveLayers : 옥타브당 계층 수 (기본 3)
-        0.04, // contrastThreshold : 낮출수록 더 많이 검출
+        0.04, // contrastThreshold : 낮출수록 더 많이 검출, 극값 필터링, weak 극값 없애기 위함임.
         10.0, // edgeThreshold : 높일수록 에지 억제 완화
         1.6   // sigma: 초기 블러(가우시안 표준편차)
     );
