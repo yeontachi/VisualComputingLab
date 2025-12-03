@@ -31,7 +31,7 @@ void SIFT_FeaturePoints(const Mat &src)
     Ptr<SIFT> sift = SIFT::create(
         0,
         3,
-        0.02,
+        0.04,
         10.0,
         1.6);
 
