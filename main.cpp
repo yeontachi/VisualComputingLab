@@ -1,89 +1,206 @@
 #include <opencv2/opencv.hpp>
-#include <opencv2/features2d.hpp>
 #include <iostream>
-#include <vector>
+#include <cmath>
 
 using namespace std;
 using namespace cv;
 
-void detectSIFT_BlockWise(const Mat &img, int M, int N, vector<KeyPoint> &kps, Mat &desc)
+Mat getGaussianFilter()
 {
-    Mat gray;
-    cvtColor(img, gray, COLOR_BGR2GRAY);
+    int ksize = 5;
+    float sigma = 1.0;
+    Mat g = getGaussianKernel(ksize, sigma, CV_64F);
+    return g * g.t();
+}
+static inline double pixelDist(const Vec3b &a, const Vec3b &b)
+{
+    double db = a[0] - b[0];
+    double dg = a[1] - b[1];
+    double dr = a[2] - b[2];
+    return sqrt(db * db + dg * dg + dr * dr);
+}
 
-    int rows = img.rows;
-    int cols = img.cols;
-    int block_height = rows / M;
-    int block_width = cols / N;
+static inline unsigned char calCenter(unsigned char lo, unsigned char hi)
+{
+    return static_cast<unsigned char>(((int)lo + (int)hi) / 2);
+}
 
-    Ptr<SIFT> sift = SIFT::create(0, 3, 0.04, 10.0, 1.6);
+// �Ǻλ�
+static inline bool isFace(const Vec3b &pixel)
+{
+    static const Vec3b LOW(50, 130, 180);   // B, G, R (����)
+    static const Vec3b HIGH(170, 190, 230); // B, G, R (����)
+    static const Vec3b center(
+        calCenter(LOW[0], HIGH[0]),
+        calCenter(LOW[1], HIGH[1]),
+        calCenter(LOW[2], HIGH[2]));
+    static const double radius = pixelDist(LOW, HIGH) / 2;
 
-    kps.clear();
-    vector<Mat> desc_list;
+    return pixelDist(pixel, center) < radius;
+}
 
-    for (int h = 0; h < M; ++h)
+Mat GaussianFilter(const Mat &src, int ksize)
+{
+    CV_Assert(src.type() == CV_8UC3);
+    Mat dst(src.size(), src.type());
+
+    int radius = ksize / 2;
+    unsigned char *pSrc = src.data;
+    unsigned char *pDst = dst.data;
+
+    int step = src.step;
+
+    for (int y = 0; y < src.rows; ++y)
     {
-        for (int w = 0; w < N; ++w)
+        for (int x = 0; x < src.cols; ++x)
         {
-            int y_start = h * block_height;
-            int x_start = w * block_width;
+            int sumB = 0, sumG = 0, sumR = 0;
+            int count = 0;
 
-            int current_height = (h == M - 1) ? (rows - y_start) : block_height;
-            int current_width = (w == N - 1) ? (rows - x_start) : block_width;
-
-            Rect block_roi(x_start, y_start, current_width, current_height);
-            Mat block = gray(block_roi);
-
-            vector<KeyPoint> kps_block;
-            Mat desc_block;
-
-            sift->detectAndCompute(block, noArray(), kps_block, desc_block);
-
-            for (auto &kp : kps_block)
+            for (int dy = -radius; dy <= radius; ++dy)
             {
-                kp.pt.x += x_start;
-                kp.pt.y += y_start;
+                for (int dx = -radius; dx <= radius; ++dx)
+                {
+                    int ny = y + dy;
+                    int nx = x + dx;
+
+                    if (ny >= 0 && ny < src.rows && nx >= 0 && nx < src.cols)
+                    {
+                        unsigned char *pN = pSrc + ny * step + nx * 3;
+                        sumB += pN[0];
+                        sumG += pN[1];
+                        sumR += pN[2];
+                        count++;
+                    }
+                }
             }
 
-            kps.insert(kps.end(), kps_block.begin(), kps_block.end());
-            if (!desc_block.empty())
-                desc_list.push_back(desc_block);
+            unsigned char *pOut = pDst + y * step + x * 3;
+            pOut[0] = static_cast<unsigned char>(sumB / count);
+            pOut[1] = static_cast<unsigned char>(sumG / count);
+            pOut[2] = static_cast<unsigned char>(sumR / count);
         }
     }
 
-    if (!desc_list.empty())
-        vconcat(desc_list, desc);
-    else
-        desc = Mat();
-
-    Mat vis;
-
-    drawKeypoints(img, kps, vis, Scalar::all(-1), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
-
-    imshow("Blockwise SIFT Feature Detectioin", vis);
+    return dst;
 }
 
-int main(void)
+int main()
 {
-    Mat img1 = imread("Lena.png");
-    // Mat img2 = imread("matchLena.png");
-
-    if (img1.empty() /*|| img2.empty()*/)
+    Mat src = imread("image.jpg"); // �Է� ����
+    if (src.empty())
     {
-        cerr << "Image Not FOund" << "\n";
+        cerr << "Image not found!" << endl;
         return -1;
     }
 
-    vector<KeyPoint> k1_block, k2_block;
-    Mat d1_block, d2_block;
+    // ũ�� ��� (���� ���� 1024)
+    if (src.cols > 1024)
+    {
+        double scale = 1024.0 / src.cols;
+        int newH = cvRound(src.rows * scale);
+        resize(src, src, Size(1024, newH), 0, 0, INTER_AREA);
+    }
 
-    int M = 50;
-    int N = 50;
+    Mat dst = Mat::zeros(src.size(), src.type()); // Color Slicing ���
+    Mat faceMap = Mat::zeros(src.size(), CV_8UC1);
 
-    detectSIFT_BlockWise(img1, M, N, k1_block, d1_block);
-    // detectSIFT_BlockWise(img2, M, N, k2_block, d2_block);
+    // Color Slicing
+    unsigned char *pSrc = src.data;
+    unsigned char *pDst = dst.data;
+    unsigned char *pMap = faceMap.data;
+
+    int stepSrc = src.step;
+    int stepDst = dst.step;
+    int stepMap = faceMap.step;
+
+    Mat Bb(src.rows, src.cols, CV_8UC1);
+    Mat Gg(src.rows, src.cols, CV_8UC1);
+    Mat Rr(src.rows, src.cols, CV_8UC1);
+
+    unsigned char *Bdata = Bb.data;
+    unsigned char *Gdata = Gg.data;
+    unsigned char *Rdata = Rr.data;
+
+    for (int y = 0; y < src.rows; ++y)
+    {
+        unsigned char *rowS = pSrc + y * stepSrc;
+        unsigned char *rowD = pDst + y * stepDst;
+        unsigned char *rowM = pMap + y * stepMap;
+
+        for (int x = 0; x < src.cols; ++x)
+        {
+            unsigned char B = rowS[x * 3 + 0];
+            unsigned char G = rowS[x * 3 + 1];
+            unsigned char R = rowS[x * 3 + 2];
+            Vec3b pixel(B, G, R);
+
+            if (isFace(pixel))
+            {
+                // �� ���� ��� �� ���� ����
+                rowD[x * 3 + 0] = B;
+                rowD[x * 3 + 1] = G;
+                rowD[x * 3 + 2] = R;
+                rowM[x] = 255;
+                Bdata[y * src.cols + x] = B;
+                Gdata[y * src.cols + x] = G;
+                Rdata[y * src.cols + x] = R;
+            }
+            else
+            {
+                // �󱼻��� �ƴ� ��� �� ������
+                rowD[x * 3 + 0] = 0;
+                rowD[x * 3 + 1] = 0;
+                rowD[x * 3 + 2] = 0;
+                rowM[x] = 0;
+                Bdata[y * src.cols + x] = 0;
+                Gdata[y * src.cols + x] = 0;
+                Rdata[y * src.cols + x] = 0;
+            }
+        }
+    }
+    imshow("B", Bb);
+    imshow("G", Gg);
+    imshow("R", Rr);
+
+    cv::imwrite("colorsliced.png", dst);
+    cv::imwrite("mask.png", faceMap);
+
+    // ������,�ռ�
+    Mat smooth = GaussianFilter(src, 5);
+    Mat final = src.clone();
+
+    unsigned char *pSmooth = smooth.data;
+    unsigned char *pFinal = final.data;
+    unsigned char *pMask = faceMap.data;
+
+    int stepSmooth = smooth.step;
+    int stepFinal = final.step;
+
+    for (int y = 0; y < src.rows; ++y)
+    {
+        unsigned char *rowS = pSmooth + y * stepSmooth;
+        unsigned char *rowF = pFinal + y * stepFinal;
+        unsigned char *rowM = pMask + y * stepMap;
+
+        for (int x = 0; x < src.cols; ++x)
+        {
+            if (rowM[x] == 255) // �� �����̸� ������ ��� ���
+            {
+                rowF[x * 3 + 0] = rowS[x * 3 + 0];
+                rowF[x * 3 + 1] = rowS[x * 3 + 1];
+                rowF[x * 3 + 2] = rowS[x * 3 + 2];
+            }
+        }
+    }
+
+    imshow("Original", src);
+    imshow("Color Slicing", dst);
+    imshow("Face Map", faceMap);
+    imshow("Smoothed Face", final);
+
+    imwrite("mask.png", facemap);
 
     waitKey(0);
-
     return 0;
 }
